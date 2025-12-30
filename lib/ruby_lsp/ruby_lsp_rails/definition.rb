@@ -139,7 +139,7 @@ module RubyLsp
         controller, action = content.split("#", 2)
 
         parent_call_node = find_parent_call_node(node)
-        scopes = collect_scopes(parent_call_node)
+        scopes = collect_scopes(parent_call_node, node)
 
         results = @client.controller_action_target(
           controller: (scopes + [controller]).join("/"),
@@ -181,12 +181,13 @@ module RubyLsp
         end
       end
 
-      def collect_scopes(node, result = [])
-        return result unless node.respond_to?(:child_nodes)
+      def collect_scopes(current_node, node, result = [])
+        return result if current_node.equal?(node)
+        return result unless current_node.respond_to?(:child_nodes)
 
-        extract_scope_or_namespace(node, result)
+        extract_scope_or_namespace(current_node, result)
 
-        node.child_nodes.each do |child|
+        current_node.child_nodes.each do |child|
           collect_scopes(child, result)
         end
 

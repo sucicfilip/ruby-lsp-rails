@@ -496,7 +496,7 @@ module RubyLsp
         assert_equal(7, location.range.end.line)
       end
 
-      test "finds all matching controller actions when multiple controllers exist in different namespaces" do
+      test "finds the controller action definition when multiple controllers exist in different namespaces" do
         source = <<~RUBY
           Rails.application.routes.draw do
             # Define your application routes per the DSL in https://guides.rubyonrails.org/routing.html
@@ -515,16 +515,9 @@ module RubyLsp
 
         response = generate_definitions_for_source(source, { line: 9, character: 45 }, uri: URI("file:///config/routes.rb"))
 
-        assert_equal(2, response.size)
+        assert_equal(1, response.size)
 
         location = response.first
-
-        expected_path = File.expand_path("test/dummy/app/controllers/users_controller.rb")
-        assert_equal("file://#{expected_path}", location.uri)
-        assert_equal(5, location.range.start.line)
-        assert_equal(5, location.range.end.line)
-
-        location = response.second
 
         expected_path = File.expand_path("test/dummy/app/controllers/admin/users_controller.rb")
         assert_equal("file://#{expected_path}", location.uri)
