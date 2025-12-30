@@ -450,7 +450,7 @@ module RubyLsp
 
         ::Rails.application.routes.routes.each do |route|
           reqs = route.requirements
-          next unless reqs[:controller]&.ends_with?(controller) && reqs[:action] == action
+          next unless reqs.values_at(:controller, :action) == [controller, action]
 
           controller_class = "#{reqs[:controller].camelize}Controller".safe_constantize # rubocop:disable Sorbet/ConstantsFromStrings
           next unless controller_class

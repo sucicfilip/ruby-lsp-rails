@@ -505,7 +505,7 @@ module RubyLsp
               get :unarchive, on: :collection, to: "users#unarchive"
             end
 
-            scope module: "admin" do
+            namespace "admin" do
               resources :users do
                 get :archive, on: :collection, to: "users#archive"
               end
@@ -513,7 +513,7 @@ module RubyLsp
           end
         RUBY
 
-        response = generate_definitions_for_source(source, { line: 3, character: 45 }, uri: URI("file:///config/routes.rb"))
+        response = generate_definitions_for_source(source, { line: 9, character: 45 }, uri: URI("file:///config/routes.rb"))
 
         assert_equal(2, response.size)
 

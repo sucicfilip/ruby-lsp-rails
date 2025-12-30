@@ -138,8 +138,11 @@ module RubyLsp
 
         controller, action = content.split("#", 2)
 
+        parent_call_node = find_parent_call_node(node)
+        scopes = collect_scopes(parent_call_node)
+
         results = @client.controller_action_target(
-          controller: controller,
+          controller: (scopes + [controller]).join("/"),
           action: action,
         )
 
@@ -148,6 +151,84 @@ module RubyLsp
         results.each do |result|
           @response_builder << Support::LocationBuilder.line_location_from_s(result.fetch(:location))
         end
+      end
+
+      def find_parent_call_node(target_node)
+        statements_node =
+          @node_context
+            .instance_variable_get(:@nesting_nodes)
+            .second
+            .child_nodes
+            .second
+
+        return nil unless statements_node.is_a?(Prism::StatementsNode)
+
+        statements_node.body.each do |child|
+          next unless child.is_a?(Prism::CallNode)
+          next unless node_contains?(child, target_node)
+
+          return child
+        end
+
+        nil
+      end
+
+      def node_contains?(current_node, target_node)
+        return true if current_node.equal?(target_node)
+
+        current_node&.child_nodes&.any? do |child|
+          node_contains?(child, target_node)
+        end
+      end
+
+      def collect_scopes(node, result = [])
+        return result unless node.respond_to?(:child_nodes)
+
+        extract_scope_or_namespace(node, result)
+
+        node.child_nodes.each do |child|
+          collect_scopes(child, result)
+        end
+
+        result
+      end
+
+      def extract_scope_or_namespace(node, result)
+        return unless node.is_a?(Prism::CallNode)
+
+        case node.name
+        when :scope
+          extract_scope(node, result)
+        when :namespace
+          extract_namespace(node, result)
+        end
+      end
+
+      def extract_scope(call_node, result)
+        args = call_node.arguments
+        return unless args
+
+        keyword_hash = args.arguments.find { |a| a.is_a?(Prism::KeywordHashNode) }
+        return unless keyword_hash
+
+        keyword_hash.elements.each do |assoc|
+          next unless assoc.key.is_a?(Prism::SymbolNode)
+          next unless ["module", "namespace"].include?(assoc.key.unescaped)
+          next unless assoc.value.is_a?(Prism::StringNode)
+
+          result << assoc.value.unescaped
+        end
+      end
+
+      def extract_namespace(call_node, result)
+        args = call_node.arguments
+        return unless args
+        return if args.arguments.empty?
+
+        first_arg = args.arguments.first
+        return unless first_arg.is_a?(Prism::StringNode)
+
+        result << first_arg.unescaped
       end
 
       #: (Prism::CallNode node) -> void
