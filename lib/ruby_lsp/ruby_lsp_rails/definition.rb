@@ -138,8 +138,9 @@ module RubyLsp
 
         controller, action = content.split("#", 2)
 
-        parent_call_node = find_parent_call_node(node)
-        scopes = collect_scopes(parent_call_node, node)
+        scopes = collect_scopes_from_context
+
+        puts scopes
 
         results = @client.controller_action_target(
           controller: (scopes + [controller]).join("/"),
@@ -153,58 +154,62 @@ module RubyLsp
         end
       end
 
-      def find_parent_call_node(target_node)
-        statements_node =
-          @node_context
-            .instance_variable_get(:@nesting_nodes)
-            .second
-            .child_nodes
-            .second
+      def collect_scopes_from_context
+        scopes = []
+        blocks = @node_context.instance_variable_get(:@nesting_nodes)
 
-        return nil unless statements_node.is_a?(Prism::StatementsNode)
+        blocks.reverse_each.with_index do |block, i|
+          next unless block.is_a?(Prism::BlockNode)
 
-        statements_node.body.each do |child|
-          next unless child.is_a?(Prism::CallNode)
-          next unless node_contains?(child, target_node)
+          parent_block = blocks.reverse[i + 1]
+          next unless parent_block
 
-          return child
+          call = find_call_in_block(parent_block, block)
+          next unless call
+
+          case call.name
+          when :scope
+            extract_scope(call, scopes)
+          when :namespace
+            extract_namespace(call, scopes)
+          end
         end
 
-        nil
+        scopes.reverse
       end
 
-      def node_contains?(current_node, target_node)
-        return true if current_node.equal?(target_node)
 
-        current_node&.child_nodes&.any? do |child|
-          node_contains?(child, target_node)
-        end
-      end
+      def find_call_in_block(container_node, target_block)
+        statements =
+          case container_node
+          when Prism::BlockNode
+            container_node.body
+          when Prism::ProgramNode
+            container_node.statements
+          else
+            nil
+          end
 
-      def collect_scopes(current_node, node, result = [])
-        return result if current_node.equal?(node)
-        return result unless current_node.respond_to?(:child_nodes)
+        return nil unless statements&.body
 
-        extract_scope_or_namespace(current_node, result)
-
-        current_node.child_nodes.each do |child|
-          collect_scopes(child, result)
-        end
-
-        result
-      end
-
-      def extract_scope_or_namespace(node, result)
-        return unless node.is_a?(Prism::CallNode)
-
-        case node.name
-        when :scope
-          extract_scope(node, result)
-        when :namespace
-          extract_namespace(node, result)
+        statements.body.find do |node|
+          node.is_a?(Prism::CallNode) && node.block == target_block
         end
       end
 
+
+
+      def find_parent_statements(block)
+        parent = block.parent
+        return unless parent
+
+        if parent.is_a?(Prism::CallNode)
+          parent.parent # => StatementsNode
+        else
+          nil
+        end
+      end
+      
       def extract_scope(call_node, result)
         args = call_node.arguments
         return unless args
@@ -214,7 +219,7 @@ module RubyLsp
 
         keyword_hash.elements.each do |assoc|
           next unless assoc.key.is_a?(Prism::SymbolNode)
-          next unless ["module", "namespace"].include?(assoc.key.unescaped)
+          next unless ['module', 'namespace'].include?(assoc.key.unescaped)
           next unless assoc.value.is_a?(Prism::StringNode)
 
           result << assoc.value.unescaped
