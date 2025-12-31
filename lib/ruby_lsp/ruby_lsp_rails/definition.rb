@@ -172,12 +172,27 @@ module RubyLsp
             extract_scope(call, scopes)
           when :namespace
             extract_namespace(call, scopes)
+          when :concern
+            extract_concern(call, scopes)
           end
         end
 
         scopes.reverse
       end
 
+      def extract_concern(call_node, result)
+        args = call_node.arguments
+        return unless args
+        return if args.arguments.empty?
+
+        first_arg = args.arguments.first
+        case first_arg
+        when Prism::SymbolNode
+          result << first_arg.unescaped
+        when Prism::StringNode
+          result << first_arg.unescaped
+        end
+      end
 
       def find_call_in_block(container_node, target_block)
         statements =
@@ -197,19 +212,6 @@ module RubyLsp
         end
       end
 
-
-
-      def find_parent_statements(block)
-        parent = block.parent
-        return unless parent
-
-        if parent.is_a?(Prism::CallNode)
-          parent.parent # => StatementsNode
-        else
-          nil
-        end
-      end
-      
       def extract_scope(call_node, result)
         args = call_node.arguments
         return unless args
@@ -220,7 +222,7 @@ module RubyLsp
         keyword_hash.elements.each do |assoc|
           next unless assoc.key.is_a?(Prism::SymbolNode)
           next unless ['module', 'namespace'].include?(assoc.key.unescaped)
-          next unless assoc.value.is_a?(Prism::StringNode)
+          next unless assoc.value.is_a?(Prism::StringNode) || assoc.value.is_a?(Prism::SymbolNode)
 
           result << assoc.value.unescaped
         end
@@ -232,10 +234,25 @@ module RubyLsp
         return if args.arguments.empty?
 
         first_arg = args.arguments.first
-        return unless first_arg.is_a?(Prism::StringNode)
+        return unless first_arg.is_a?(Prism::StringNode) || first_arg.is_a?(Prism::SymbolNode)
 
         result << first_arg.unescaped
       end
+
+      def extract_concern(call_node, result)
+        args = call_node.arguments
+        return unless args
+        return if args.arguments.empty?
+
+        first_arg = args.arguments.first
+        case first_arg
+        when Prism::SymbolNode
+          result << first_arg.unescaped
+        when Prism::StringNode
+          result << first_arg.unescaped
+        end
+      end
+
 
       #: (Prism::CallNode node) -> void
       def handle_association(node)
